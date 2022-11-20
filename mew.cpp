@@ -60,11 +60,6 @@ using cstr = const std::string;
 template<typename T>
 auto tostr(const T& t) -> str { return str(t); }
 
-///**
-//*/
-//template<typename... T>
-//auto clear(T&... t) -> void {forall({t...}, [&](auto& tj) {tj->clear();});}
-
 /**
 */
 template<typename T>
@@ -108,7 +103,7 @@ auto isin(map<K, V>& t, const K& k) -> bool {return t.contains(k);}
 /**
 */
 template<typename T>
-auto concat(T& a, T& b) -> void {std::ranges::copy(b, std::back_inserter(a));}
+auto concat(T& a, const T& b) -> void {std::ranges::copy(b, std::back_inserter(a));}
 
 /**
 */
@@ -194,6 +189,16 @@ auto insert(T& t, I iter, const A& a) -> void { t.insert(iter, a); }
 template<typename T>
 auto clear(T& t) -> void { t.clear(); }
 
+/**
+*/
+template<typename T, typename F>
+auto mapall(std::istream& is, T& t, F f) -> void {
+    str line;
+    while (std::getline(is, line)) {
+        append(t, f(std::move(line)));
+    }
+}
+
 namespace mew {
 
 auto cmd_modes = vec<char>{'F', 'f', 's'};
@@ -221,6 +226,10 @@ struct Item {
 /**
 */
 auto tostr(const Item& item) -> str {return item.text;}
+
+/**
+*/
+auto newItem(cstr& text) -> Item { return Item{"  ", text, "", -1}; }
 
 /**
 */
@@ -273,6 +282,13 @@ struct MenuHistoryElem {
 */
 class Scroller {
 
+    friend auto current(const Scroller& s) -> std::tuple<int, int, int>;
+    friend auto next(Scroller& s) -> std::tuple<int, int, int>;
+    friend auto prev(Scroller& s) -> std::tuple<int, int, int>;
+    friend auto scrolled(const Scroller& s) -> bool;
+    friend auto repos(Scroller& s, int c) -> void;
+    friend auto resize(Scroller& s, int data_end) -> void;
+
     public:
         Scroller() {}
 
@@ -286,7 +302,7 @@ class Scroller {
          *      can take (usually less than `LINES` or `COLS`).
          * @param data_end: the size of the data being scrolled.
         */
-        Scroller(int cursor_max, int data_end) : cursor(0), cursor_max(cursor_max), data_idx(0), data_beg(0), data_end(data_end) {
+        Scroller(int cursor_max, int data_end) : cursor(0), cursor_max(cursor_max), data_idx(0), data_beg(0), data_end(data_end), scrolled(false) {
         }
 
         /**
@@ -301,89 +317,89 @@ class Scroller {
          * @param data_idx: index of the data that the cursor
          *      starts at.
         */
-        Scroller(int cursor_max, int data_end, int data_idx) : cursor(0), cursor_max(cursor_max), data_idx(data_idx), data_beg(data_idx), data_end(data_end) {
+        Scroller(int cursor_max, int data_end, int data_idx) : cursor(0), cursor_max(cursor_max), data_idx(data_idx), data_beg(data_idx), data_end(data_end), scrolled(false) {
         }
 
-        /**
-         * Set position of cursor.
-         *
-         * @param c: new index of cursor.  If this is greater
-         *      than `cursor_max` passed at construction, then
-         *      the cursor is not updated.
-        */
-        auto set_cursor(int c) -> void {
-            if (c > cursor_max) { return; }
-            int diff = c - cursor;
-            data_idx = std::min(std::max(data_idx + diff, 0), data_end - 1);
-            cursor = std::min(std::max(cursor + diff, 0), cursor_max);
-        }
-
-        /**
-         * Set data size.
-         *
-         * Useful when the size of the data being scrolled is
-         * dynamic.
-         *
-         * @param m: new data size.
-        */
-        auto set_data_end(int m) -> void {
-            data_end = m;
-        }
-
-        /**
-         * Get scroll positions.
-         *
-         * @return tuple of `(cursor, data_beg, data_idx)`.
-         *      `data_beg` is the index of the first data item
-         *      visible (pointed to when `cursor = 0`).  `data_idx`
-         *      is the index of the data item pointed to by the
-         *      cursor.
-        */
-        auto get_pos() -> std::tuple<int, int, int> {
-            return {cursor, data_beg, data_idx};
-        }
-
-        /**
-         * Scroll to the next data item.
-         *
-         * @return true if the cursor had to scroll past `cursor_max`,
-         *      signaling a potential redraw of the screen.  Otherwise
-         *      false.
-        */
-        auto next() -> bool {
-            data_idx = std::min(data_end - 1, data_idx + 1);
-            cursor += 1;
-            if (cursor >= cursor_max) {
-                data_beg = std::min(data_end - cursor_max, data_beg + 1);
-                cursor = cursor_max - 1;
-                if (data_idx == (data_end - 1)) {
-                    cursor = data_idx - data_beg;
-                }
-                return true;
-            }
-            if (data_idx == (data_end - 1)) {
-                cursor = data_idx - data_beg;
-            }
-            return false;
-        }
-
-        /**
-         * Scroll to the previous data item.
-         *
-         * @return true if the cursor had to scroll before 0,
-         *      signaling a potential redraw of the screen.
-         *      Otherwise false.
-        */
-        auto prev() -> bool {
-            data_idx = std::max(0, data_idx - 1);
-            if (cursor <= 0) {
-                data_beg = data_idx;
-                cursor = 0;
-                return true;
-            }
-            cursor -= 1;
-            return false;
-        }
+        ///**
+         //* Set position of cursor.
+         //*
+         //* @param c: new index of cursor.  If this is greater
+         //*      than `cursor_max` passed at construction, then
+         //*      the cursor is not updated.
+        //*/
+        //auto set_cursor(int c) -> void {
+            //if (c > cursor_max) { return; }
+            //int diff = c - cursor;
+            //data_idx = std::min(std::max(data_idx + diff, 0), data_end - 1);
+            //cursor = std::min(std::max(cursor + diff, 0), cursor_max);
+        //}
+//
+        ///**
+         //* Set data size.
+         //*
+         //* Useful when the size of the data being scrolled is
+         //* dynamic.
+         //*
+         //* @param m: new data size.
+        //*/
+        //auto set_data_end(int m) -> void {
+            //data_end = m;
+        //}
+//
+        ///**
+         //* Get scroll positions.
+         //*
+         //* @return tuple of `(cursor, data_beg, data_idx)`.
+         //*      `data_beg` is the index of the first data item
+         //*      visible (pointed to when `cursor = 0`).  `data_idx`
+         //*      is the index of the data item pointed to by the
+         //*      cursor.
+        //*/
+        //auto get_pos() -> std::tuple<int, int, int> {
+            //return {cursor, data_beg, data_idx};
+        //}
+//
+        ///**
+         //* Scroll to the next data item.
+         //*
+         //* @return true if the cursor had to scroll past `cursor_max`,
+         //*      signaling a potential redraw of the screen.  Otherwise
+         //*      false.
+        //*/
+        //auto next() -> bool {
+            //data_idx = std::min(data_end - 1, data_idx + 1);
+            //cursor += 1;
+            //if (cursor >= cursor_max) {
+                //data_beg = std::min(data_end - cursor_max, data_beg + 1);
+                //cursor = cursor_max - 1;
+                //if (data_idx == (data_end - 1)) {
+                    //cursor = data_idx - data_beg;
+                //}
+                //return true;
+            //}
+            //if (data_idx == (data_end - 1)) {
+                //cursor = data_idx - data_beg;
+            //}
+            //return false;
+        //}
+//
+        ///**
+         //* Scroll to the previous data item.
+         //*
+         //* @return true if the cursor had to scroll before 0,
+         //*      signaling a potential redraw of the screen.
+         //*      Otherwise false.
+        //*/
+        //auto prev() -> bool {
+            //data_idx = std::max(0, data_idx - 1);
+            //if (cursor <= 0) {
+                //data_beg = data_idx;
+                //cursor = 0;
+                //return true;
+            //}
+            //cursor -= 1;
+            //return false;
+        //}
 
     private:
         int cursor;
@@ -391,7 +407,64 @@ class Scroller {
         int data_idx;
         int data_beg;
         int data_end;
+        bool scrolled;
 };
+
+auto resize(Scroller& s, int data_end) -> void { s.data_end = data_end; }
+
+auto current(const Scroller& s) -> std::tuple<int, int, int> {
+    return {s.cursor, s.data_beg, s.data_idx};
+}
+
+auto scrolled(const Scroller& s) -> bool { return s.scrolled; }
+
+/**
+ * Set position of cursor.
+ *
+ * @param c: new index of cursor.  If this is greater
+ *      than `cursor_max` passed at construction, then
+ *      the cursor is not updated.
+ */
+auto repos(Scroller& s, int c) -> void {
+    if (c > s.cursor_max) return;
+    int diff = c - s.cursor;
+    s.data_idx = std::min(std::max(s.data_idx + diff, 0), s.data_end - 1);
+    s.cursor = std::min(std::max(s.cursor + diff, 0), s.cursor_max);
+}
+
+/**
+*/
+auto next(Scroller& s) -> std::tuple<int, int, int> {
+    s.data_idx = std::min(s.data_end - 1, s.data_idx + 1);
+    s.cursor += 1;
+    if (s.cursor >= s.cursor_max) {
+        s.data_beg = std::min(s.data_end - s.cursor_max, s.data_beg + 1);
+        s.cursor = s.cursor_max - 1;
+        if (s.data_idx == (s.data_end - 1)) {
+            s.cursor = s.data_idx - s.data_beg;
+        }
+        s.scrolled = true;
+        return current(s);
+    }
+    else if (s.data_idx == (s.data_end - 1)) {
+        s.cursor = s.data_idx - s.data_beg;
+    }
+    s.scrolled = false;
+    return current(s);
+}
+
+auto prev(Scroller& s) -> std::tuple<int, int, int> {
+    s.data_idx = std::max(0, s.data_idx - 1);
+    if (s.cursor <= 0) {
+        s.data_beg = s.data_idx;
+        s.cursor = 0;
+        s.scrolled = true;
+        return current(s);
+    }
+    s.cursor -= 1;
+    s.scrolled = false;
+    return current(s);
+}
 
 /**
  * A scrollable menu.
@@ -401,6 +474,16 @@ class Scroller {
  * (eg. color, bold, etc.).
 */
 class Menu {
+    friend auto prev(Menu& m) -> void;
+    friend auto next(Menu& m) -> void;
+    friend auto current(const Menu& m) -> str;
+    friend auto getall(const Menu& m) -> cvec<Item>*;
+    friend auto resize(Menu& m, const std::tuple<int, int, int>& bounds) -> void;
+    friend auto setall(Menu& m, cvec<Item>& items, cvec2d<ItemAttr>& attrs) -> void;
+    friend auto toggle_selection(Menu& m) -> void;
+    friend auto toggle_selection(Menu& m, int line) -> void;
+    friend auto toggle_info(Menu& m) -> void;
+    friend auto get_selections(const Menu& m) -> vec<str>;
 
     public:
         Menu() {}
@@ -414,164 +497,6 @@ class Menu {
         */
         Menu(WINDOW* window, const std::tuple<int, int, int>& bounds) : first_line(std::get<0>(bounds)), last_line(std::get<1>(bounds)), window(window), items(), item_attrs(), selected_items(), n_lines(last_line - first_line), n_cols(std::get<2>(bounds)), show_info(false) {
             scroller = Scroller(n_lines, 0);
-        }
-
-        /**
-        */
-        auto toggle_info() -> void {
-            show_info = not show_info;
-            auto [c, db, di] = scroller.get_pos();
-            show_items(db, std::min((int)len(items) - db, n_lines), c, di, show_info);
-        }
-
-        /**
-         * Scroll to the previous item.
-        */
-        auto scroll_up() -> void {
-            if (std::empty(items)) {
-                return;
-            }
-            auto scrolled = scroller.prev();
-            auto [c, db, di] = scroller.get_pos();
-            if (scrolled) {
-                show_items(di, std::min((int)len(items) - di, n_lines), c, di, show_info);
-            }
-            else {
-                unhighlight(c + 1, di + 1);
-                highlight(c, di);
-            }
-        }
-
-        /**
-         * Scroll to the next item.
-        */
-        auto scroll_down() -> void {
-            if (std::empty(items)) {
-                return;
-            }
-            auto scrolled = scroller.next();
-            auto [c, db, di] = scroller.get_pos();
-            if (scrolled) {
-                show_items(db, std::min((int)len(items), n_lines), c, di, show_info);
-            }
-            else {
-                unhighlight(c - 1, di - 1);
-                highlight(c, di);
-            }
-        }
-
-        /**
-         * Select a line.
-         *
-         * @param line the line to select.
-        */
-        auto toggle_selection(int line) -> void {
-            if (std::empty(items)) {
-                return;
-            }
-            auto [c, db, di] = scroller.get_pos();
-            unhighlight(c, di);
-            scroller.set_cursor(line);
-            toggle_selection();
-        }
-
-        /**
-         * Select the current line.
-        */
-        auto toggle_selection() -> void {
-            if (std::empty(items)) {
-                return;
-            }
-
-            auto [c, db, di] = scroller.get_pos();
-            if (selected_items.contains(di)) {
-                remove(selected_items, di);
-                items[di].info[0] = ' ';
-            }
-            else {
-                insert(selected_items, di);
-                items[di].info[0] = '*';
-            }
-            show_item(di, c, show_info);
-            highlight(c, di);
-        }
-
-        /**
-         * Set and display items in the menu.
-         *
-         * This shows strings and their attributes in the menu.
-         * Each string is associated with a list of attributes
-         * (`ItemAttr`s) that are applied to different substrings
-         * of the string.
-         *
-         * @param results strings to show as menu items.
-         * @param attr per-string ncurses attributes to apply
-         *      to regions of each string.
-        */
-        auto set_items(cvec<Item>& items, cvec2d<ItemAttr>& attrs) -> void {
-            if (std::empty(items)) {
-                return;
-            }
-
-            clear(this->items);
-            clear(this->item_attrs);
-            mapall(items, this->items, identity<Item>);
-            if (len(attrs) == len(items)) {
-                mapall(attrs, item_attrs, identity<vec<ItemAttr>>);
-            }
-
-            auto items_len = len(items);
-            n_lines = std::min(last_line - first_line, (int)items_len); 
-            wclear(window);
-            show_items(0, std::min((int)items_len, n_lines), 0, 0, show_info);
-            scroller = Scroller(n_lines, items_len);
-        }
-
-        /**
-        */
-        auto get_items() const -> cvec<Item>* {
-            return &items;
-        }
-
-        /**
-         * Get all selected items.
-         *
-         * @return selected items.
-        */
-        auto get_highlighted() -> str {
-            auto [c, db, di] = scroller.get_pos();
-            return items[di].text;
-        }
-
-        /**
-         * Get all selected items.
-         *
-         * @return selected items.
-        */
-        auto get_selections() -> vec<str> {
-            auto selections = newVecReserve<str>(len(selected_items));
-            for (const auto& item_idx : selected_items) {
-                append(selections, items[item_idx].text);
-            }
-            return selections;
-        }
-
-        /**
-         * Resize menu.
-         *
-         * @param bounds new bounds in which the menu is contained,
-         *      given as `(first row, last row, num of columns)`.
-        */
-        auto resize(const std::tuple<int, int, int>& bounds) -> void {
-            first_line = std::get<0>(bounds);
-            last_line = std::get<1>(bounds);
-            n_cols = std::get<2>(bounds);
-
-            auto items_len = len(items);
-            n_lines = std::min(last_line - first_line, (int)items_len); 
-            auto [c, db, di] = scroller.get_pos();
-            show_items(db, std::min((int)items_len - db, n_lines), 0, db, show_info);
-            scroller = Scroller(n_lines, items_len, db);
         }
 
     private:
@@ -712,9 +637,171 @@ class Menu {
 };
 
 /**
+ * Get all selected items.
+ *
+ * @return selected items.
+ */
+auto get_selections(const Menu& m) -> vec<str> {
+    auto selections = newVecReserve<str>(len(m.selected_items));
+    for (const auto& item_idx : m.selected_items) {
+        append(selections, m.items[item_idx].text);
+    }
+    return selections;
+}
+
+/**
+*/
+auto toggle_info(Menu& m) -> void {
+    m.show_info = not m.show_info;
+    auto [c, db, di] = current(m.scroller);
+    m.show_items(db, std::min((int)len(m.items) - db, m.n_lines), c, di, m.show_info);
+}
+
+/**
+ * Select the current line.
+ */
+auto toggle_selection(Menu& m) -> void {
+    if (std::empty(m.items)) {
+        return;
+    }
+
+    auto [c, db, di] = current(m.scroller);
+    if (isin(m.selected_items, di)) {
+        remove(m.selected_items, di);
+        m.items[di].info[0] = ' ';
+    }
+    else {
+        insert(m.selected_items, di);
+        m.items[di].info[0] = '*';
+    }
+    m.show_item(di, c, m.show_info);
+    m.highlight(c, di);
+}
+
+/**
+ * Select a line.
+ *
+ * @param line the line to select.
+ */
+auto toggle_selection(Menu& m, int line) -> void {
+    if (std::empty(m.items)) {
+        return;
+    }
+    auto [c, db, di] = current(m.scroller);
+    m.unhighlight(c, di);
+    repos(m.scroller, line);
+    toggle_selection(m);
+}
+
+/**
+ * Set and display items in the menu.
+ *
+ * This shows strings and their attributes in the menu.
+ * Each string is associated with a list of attributes
+ * (`ItemAttr`s) that are applied to different substrings
+ * of the string.
+ *
+ * @param results strings to show as menu items.
+ * @param attr per-string ncurses attributes to apply
+ *      to regions of each string.
+ */
+auto setall(Menu& m, cvec<Item>& items, cvec2d<ItemAttr>& attrs) -> void {
+    if (std::empty(items)) {
+        return;
+    }
+
+    clear(m.items);
+    clear(m.item_attrs);
+    mapall(items, m.items, identity<Item>);
+    if (len(attrs) == len(items)) {
+        mapall(attrs, m.item_attrs, identity<vec<ItemAttr>>);
+    }
+
+    auto items_len = len(items);
+    m.n_lines = std::min(m.last_line - m.first_line, (int)items_len);
+    wclear(m.window);
+    m.show_items(0, std::min((int)items_len, m.n_lines), 0, 0, m.show_info);
+    m.scroller = Scroller(m.n_lines, items_len);
+}
+
+/**
+ * Resize menu.
+ *
+ * @param bounds new bounds in which the menu is contained,
+ *      given as `(first row, last row, num of columns)`.
+ */
+auto resize(Menu& m, const std::tuple<int, int, int>& bounds) -> void {
+    m.first_line = std::get<0>(bounds);
+    m.last_line = std::get<1>(bounds);
+    m.n_cols = std::get<2>(bounds);
+
+    auto items_len = len(m.items);
+    m.n_lines = std::min(m.last_line - m.first_line, (int)items_len);
+    auto [c, db, di] = current(m.scroller);
+    m.show_items(db, std::min((int)items_len - db, m.n_lines), 0, db, m.show_info);
+    m.scroller = Scroller(m.n_lines, items_len, db);
+}
+
+/**
+*/
+auto getall(const Menu& m) -> cvec<Item>* { return &m.items; }
+
+/**
+ * Scroll to the next item.
+ */
+auto next(Menu& m) -> void {
+    if (std::empty(m.items)) {
+        return;
+    }
+    if (auto [c, db, di] = next(m.scroller); scrolled(m.scroller)) {
+        m.show_items(db, std::min((int)len(m.items), m.n_lines), c, di, m.show_info);
+    }
+    else {
+        m.unhighlight(c - 1, di - 1);
+        m.highlight(c, di);
+    }
+}
+
+/**
+ * Get all selected items.
+ *
+ * @return selected items.
+ */
+auto current(const Menu& m) -> str {
+    auto [c, db, di] = current(m.scroller);
+    return m.items[di].text;
+}
+
+/**
+*/
+auto prev(Menu& m) -> void {
+    if (std::empty(m.items)) {
+        return;
+    }
+    if (auto [c, db, di] = prev(m.scroller); scrolled(m.scroller)) {
+        m.show_items(di, std::min((int)len(m.items) - di, m.n_lines), c, di, m.show_info);
+    }
+    else {
+        m.unhighlight(c + 1, di + 1);
+        m.highlight(c, di);
+    }
+}
+
+
+/**
  * A scrollable text input line.
 */
 class CommandLine {
+    friend auto clear(CommandLine& c) -> void;
+    friend auto prev(CommandLine& cl) -> void;
+    friend auto next(CommandLine& cl) -> void;
+    friend auto erase(CommandLine& cl) -> void;
+    friend auto insert(CommandLine& cl, char c) -> void;
+    friend auto resize(CommandLine& c, const std::tuple<int, int>& bounds) -> void;
+    friend auto get_text(const CommandLine& c) -> str;
+    friend auto set_text(CommandLine& c, cstr& text) -> void;
+    friend auto get_mode(const CommandLine& c) -> char;
+    friend auto set_mode(CommandLine& c, char ch) -> void;
 
     public:
 
@@ -733,132 +820,6 @@ class CommandLine {
             scroller = Scroller(n_cols - len(status_info), 0);
         }
 
-        /**
-         * Set the cursor to the previous character.
-        */
-        auto moveto_prev_char() -> void {
-            if (std::empty(text)) {
-                return;
-            }
-            if (scroller.prev()) {
-                redraw();
-            }
-            else {
-                auto [c, db, di] = scroller.get_pos();
-                wmove(window, row, std::min(c + (int)len(status_info), n_cols));
-            }
-        }
-
-        /**
-         * Set the cursor to the next character.
-        */
-        auto moveto_next_char() -> void {
-            if (std::empty(text)) {
-                return;
-            }
-            if (scroller.next()) {
-                redraw();
-            }
-            else {
-                auto [c, db, di] = scroller.get_pos();
-                wmove(window, row, std::min(c + (int)len(status_info), n_cols));
-            }
-        }
-
-        /**
-         * Return the command line text.
-         *
-         * @return current text.
-        */
-        auto get_text() -> str {
-            return text;
-        }
-
-        /**
-         * Return the command line text.
-         *
-         * @return current text.
-        */
-        auto set_text(cstr& text) -> str {
-            this->text = text;
-            scroller = Scroller(n_cols - len(status_info), len(text) + 1);
-            redraw();
-            return text;
-        }
-
-        /**
-         * Remove the character before the cursor.
-        */
-        auto pop() -> void {
-            auto [c, db, di] = scroller.get_pos();
-            if (std::empty(text) or (di == 0)) {
-                return;
-            }
-            remove(text, std::begin(text) + di - 1);
-            scroller.set_data_end(len(text) + 1);
-            redraw();
-            moveto_prev_char();
-        }
-
-        /**
-         * Resize command line.
-         *
-         * @param bounds new bounds in which the menu is contained,
-         *      given as `(row, num of columns)`.
-        */
-        auto resize(const std::tuple<int, int>& bounds) -> void {
-            row = std::get<0>(bounds);
-            n_cols = std::get<1>(bounds);
-            auto [c, db, di] = scroller.get_pos();
-            scroller = Scroller(n_cols - len(status_info), len(text) + 1, db);
-            redraw();
-        }
-
-        /**
-         * Insert a character before the cursor.
-         *
-         * @param c character to insert.
-        */
-        auto insert(char c) -> void {
-            auto [cu, db, di] = scroller.get_pos();
-            if (cu >= (len(text) - db)) {
-                text += c;
-            }
-            else {
-                text.insert(di, 1, c);
-                //insert(text, std::begin(text) + di, c);
-            }
-            scroller.set_data_end(len(text) + 1);
-            redraw();
-            moveto_next_char();
-        }
-
-        /**
-         * Get the mode currently being shown.
-         *
-         * @return the mode currently being shown.
-        */
-        auto get_mode() -> char {
-            return status_info[1];
-        }
-
-        /**
-         * Set the mode to show.
-         *
-         * @param c the mode to show in the command line.
-        */
-        auto set_mode(char c) -> void {
-            status_info[1] = c;
-            redraw();
-        }
-
-        /**
-        */
-        auto clear() -> void {
-            text.clear();
-            scroller = Scroller(n_cols - len(status_info), 0);
-            redraw();
-        }
 
     private:
 
@@ -866,7 +827,7 @@ class CommandLine {
          * Redraw command line contents.
         */
         auto redraw() -> void {
-            auto [c, db, di] = scroller.get_pos();
+            auto [c, db, di] = current(scroller);
             auto status_len = len(status_info);
             auto text_len = status_len > n_cols ? 0 : n_cols - status_len;
             wmove(window, row, 0);
@@ -889,9 +850,139 @@ class CommandLine {
 };
 
 /**
+ * Get the mode currently being shown.
+ *
+ * @return the mode currently being shown.
+ */
+auto get_mode(const CommandLine& c) -> char { return c.status_info[1]; }
+
+/**
+ * Set the mode to show.
+ *
+ * @param c the mode to show in the command line.
+ */
+auto set_mode(CommandLine& c, char ch) -> void {
+    c.status_info[1] = ch;
+    c.redraw();
+}
+
+/**
+ * Return the command line text.
+ *
+ * @return current text.
+ */
+auto get_text(const CommandLine& c) -> str { return c.text; }
+
+/**
+ * Return the command line text.
+ *
+ * @return current text.
+ */
+auto set_text(CommandLine& c, cstr& text) -> void {
+    c.text = text;
+    c.scroller = Scroller(c.n_cols - len(c.status_info), len(c.text) + 1);
+    c.redraw();
+}
+
+/**
+ * Resize command line.
+ *
+ * @param bounds new bounds in which the menu is contained,
+ *      given as `(row, num of columns)`.
+ */
+auto resize(CommandLine& c, const std::tuple<int, int>& bounds) -> void {
+    c.row = std::get<0>(bounds);
+    c.n_cols = std::get<1>(bounds);
+    auto [cu, db, di] = current(c.scroller);
+    c.scroller = Scroller(c.n_cols - len(c.status_info), len(c.text) + 1, db);
+    c.redraw();
+}
+
+/**
+*/
+auto clear(CommandLine& c) -> void {
+    ::clear(c.text);
+    c.scroller = Scroller(c.n_cols - len(c.status_info), 0);
+    c.redraw();
+}
+
+/**
+ * Set the cursor to the next character.
+ */
+auto next(CommandLine& cl) -> void {
+    if (std::empty(cl.text)) {
+        return;
+    }
+    if (auto [c, db, di] = next(cl.scroller); scrolled(cl.scroller)) {
+        cl.redraw();
+    }
+    else {
+        wmove(cl.window, cl.row, std::min(c + (int)len(cl.status_info), cl.n_cols));
+    }
+}
+
+/**
+ * Set the cursor to the previous character.
+ */
+auto prev(CommandLine& cl) -> void {
+    if (std::empty(cl.text)) {
+        return;
+    }
+    if (auto [c, db, di] = prev(cl.scroller); scrolled(cl.scroller)) {
+        cl.redraw();
+    }
+    else {
+        wmove(cl.window, cl.row, std::min(c + (int)len(cl.status_info), cl.n_cols));
+    }
+}
+
+/**
+ * Remove the character before the cursor.
+ */
+auto erase(CommandLine& cl) -> void {
+    auto [c, db, di] = current(cl.scroller);
+    if (std::empty(cl.text) or (di == 0)) {
+        return;
+    }
+    remove(cl.text, std::begin(cl.text) + di - 1);
+    resize(cl.scroller, len(cl.text) + 1);
+    cl.redraw();
+    prev(cl);
+}
+
+/**
+ * Insert a character before the cursor.
+ *
+ * @param c character to insert.
+ */
+auto insert(CommandLine& cl, char c) -> void {
+    auto [cu, db, di] = current(cl.scroller);
+    if (cu >= (len(cl.text) - db)) {
+        cl.text += c;
+    }
+    else {
+        cl.text.insert(di, 1, c);
+        //insert(text, std::begin(text) + di, c);
+    }
+    resize(cl.scroller, len(cl.text) + 1);
+    cl.redraw();
+    next(cl);
+}
+
+/**
 */
 template<typename T>
 class History {
+    template<typename R>
+    friend auto next(History<R>& h) -> const R*;
+    template<typename R>
+    friend auto prev(History<R>& h) -> const R*;
+    template<typename R>
+    friend auto insert(History<R>& h, R present) -> void;
+    template<typename R>
+    friend auto add_go_next(History<R>& h, R present) -> void;
+    template<typename R>
+    friend auto getall(const History<R>& h) -> cvec<R>*;
 
     public:
         /**
@@ -901,87 +992,78 @@ class History {
             cur_idx = -1;
         }
 
-        /**
-        */
-        auto next() -> const T* {
-            if (std::empty(history)) {
-                return nullptr;
-            }
-            if (cur_idx < (len(history) - 1)) {
-                cur_idx += 1;
-            }
-            return &history[cur_idx];
-        }
-
-        /**
-        */
-        auto prev() -> const T* {
-            if (std::empty(history)) {
-                return nullptr;
-            }
-            if (cur_idx > 0) {
-                cur_idx -= 1;
-            }
-            return &history[cur_idx];
-        }
-
-        /**
-        */
-        auto add_go_next(T present) -> void {
-            add(std::move(present));
-            next();
-        }
-
-        /**
-        */
-        auto add(T present) -> void {
-            if (not std::empty(history)) {
-                remove(history, std::begin(history) + cur_idx + 1, std::end(history));
-            }
-            append(history, std::move(present));
-            ++cur_idx;
-        }
-
-        /**
-        */
-        auto get_all() const -> cvec<T>* {
-            return &history;
-        }
-
     private:
         vec<T> history;
         int cur_idx;
 };
 
 /**
+*/
+template<typename T>
+auto next(History<T>& h) -> const T* {
+    if (std::empty(h.history)) return nullptr;
+    h.cur_idx += h.cur_idx < (len(h.history) - 1) ? 1 : 0;
+    return &h.history[h.cur_idx];
+}
+
+/**
+*/
+template<typename T>
+auto prev(History<T>& h) -> const T* {
+    if (std::empty(h.history)) return nullptr;
+    h.cur_idx -= h.cur_idx > 0 ? 1 : 0;
+    return &h.history[h.cur_idx];
+}
+
+/**
+*/
+template<typename T>
+auto insert(History<T>& h, T present) -> void {
+    if (not std::empty(h.history)) {
+        remove(h.history, std::begin(h.history) + h.cur_idx + 1, std::end(h.history));
+    }
+    append(h.history, std::move(present));
+    ++h.cur_idx;
+}
+
+/**
+*/
+template<typename T>
+auto add_go_next(History<T>& h, T present) -> void {
+    insert(h, std::move(present));
+    next(h);
+}
+
+/**
+*/
+template<typename T>
+auto getall(const History<T>& h) -> cvec<T>* { return &h.history; }
+
+/**
  * An interactive menu.
 */
 class Mew {
+    friend auto next_menu(Mew& m) -> const MenuHistoryElem*;
+    friend auto prev_menu(Mew& m) -> const MenuHistoryElem*;
+    friend auto insert_menu(Mew& m, MenuHistoryElem&& e) -> void;
+    friend auto next_cmd(Mew& m) -> const Item*;
+    friend auto prev_cmd(Mew& m) -> const Item*;
+    friend auto insert_cmd(Mew& m, Item&& c) -> void;
+    friend auto getall_cmd(const Mew& m) -> cvec<Item>*;
+    friend auto next_qry(Mew& m) -> const Item*;
+    friend auto prev_qry(Mew& m) -> const Item*;
+    friend auto insert_qry(Mew& m, Item&& q) -> void;
+    friend auto getall_qry(const Mew& m) -> cvec<Item>*;
+    friend auto get_initdata(const Mew& m) -> cvec<Item>*;
+    friend auto get_initfiles(const Mew& m) -> cvec<str>*;
+    friend auto get_selections(Mew& m) -> vec<str>;
+    friend auto show(Mew& m, const MenuData* menu_data) -> void;
+    friend auto stop(Mew& m) -> void;
+    friend auto close(Mew& m) -> void;
+    friend auto get_cmdline_bounds(const Mew& m) -> std::tuple<int, int>;
+    friend auto get_menu_bounds(const Mew& m) -> std::tuple<int, int, int>;
 
     public:
-        History<MenuHistoryElem> menu_history;
-        History<Item> search_history;
-        History<Item> cmd_history;
-        vec<Item>* global_data;
-        vec<str>* global_filenames;
-
-        /**
-         * Get bounds of the command line.
-         *
-         * @return bounds as `(row, num of columns)`.
-        */
-        auto get_cmdline_bounds() -> std::tuple<int, int> {
-            return {LINES - 1, COLS - 1};
-        }
-
-        /**
-         * Get bounds of the menu.
-         *
-         * @return bounds as `(first row, last row, num of columns)`.
-        */
-        auto get_menu_bounds() -> std::tuple<int, int, int> {
-            return {0, LINES - 2, COLS - 10};
-        }
 
         /**
          * Constructor.
@@ -990,72 +1072,14 @@ class Mew {
          *      This takes the text from the command line as input
          *      and returns a list of strings and attributes.
         */
-        Mew(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, int incremental_thresh=500000, int incremental_file=false, bool parallel = false) : selected_strings(), menu(), cmdline(), quit(false) {
-            init_curses();
-            menu = Menu(stdscr, get_menu_bounds());
-            cmdline = CommandLine(stdscr, get_cmdline_bounds());
-            keymap = create_keymap(user_keymap, remap, parallel);
+        Mew(map<int, KeyCommand>&& user_keymap, map<int, int>&& remap, vec<Item>* global_data,  vec<str>* global_filenames, int incremental_thresh=500000, int incremental_file=false, bool parallel = false) : selected_strings(), menu(), cmdline(), quit(false) {
+            this->user_keymap = user_keymap;
+            this->remap = remap;
+            this->parallel = parallel;
             this->incremental_thresh = incremental_thresh;
             this->incremental_file = incremental_file;
-        }
-
-        /**
-         * Send signal to stop reading input and start shutting down.
-        */
-        auto stop() -> void {
-            quit = true;
-        }
-
-        auto show(const MenuData& menu_data) -> void {
-            const auto& [results, attrs] = menu_data;
-            menu.set_items(results, attrs);
-            show();
-        }
-
-        /**
-         * Draw contents on the screen.
-        */
-        auto show() -> void {
-            init_screen();
-
-            cmdline.set_mode('i');
-            while (true) {
-                int c = wgetch(stdscr);
-                bool handled = false;
-                if (isin(keymap, c)) {
-                    handled = keymap[c](*this, menu, cmdline);
-                }
-                if (quit) {
-                    break;
-                }
-                if (not (handled or isin(cmd_modes, cmdline.get_mode()))) {
-                    cmdline.insert(c);
-                    if ((cmdline.get_mode() == '/') and (len(*menu.get_items()) < incremental_thresh)) {
-                        keymap[10](*this, menu, cmdline);
-                    }
-                    else if ((cmdline.get_mode() == '?') and (incremental_file)) {
-                        keymap[10](*this, menu, cmdline);
-                    }
-                }
-            }
-
-            this->close();
-        }
-
-        /**
-         * Get all selected items.
-         *
-         * @return selected items.
-        */
-        auto get_selections() -> vec<str> {
-            return menu.get_selections();
-        }
-
-        /**
-         * End ncurses and stop showing contents.
-        */
-        auto close() -> void {
-            endwin();
+            this->global_data = global_data;
+            this->global_filenames = global_filenames;
         }
 
     private:
@@ -1084,6 +1108,10 @@ class Mew {
          * Show content.
         */
         auto init_screen() -> void {
+            init_curses();
+            menu = Menu(stdscr, get_menu_bounds(*this));
+            cmdline = CommandLine(stdscr, get_cmdline_bounds(*this));
+            keymap = create_keymap(user_keymap, remap, parallel);
             //mvprintw(LINES - 3, 0, "Use <SPACE> to select or unselect an item.");
             //mvprintw(LINES - 2, 0, "<ENTER> to see presently selected items(F1 to Exit)");
             //post_menu(this->my_menu);
@@ -1099,14 +1127,135 @@ class Mew {
         map<int, KeyCommand> keymap;
         int incremental_thresh;
         int incremental_file;
+        History<MenuHistoryElem> menu_history;
+        History<Item> search_history;
+        History<Item> cmd_history;
+        map<int, KeyCommand> user_keymap;
+        map<int, int> remap;
+        bool parallel;
+        vec<Item>* global_data;
+        vec<str>* global_filenames;
 };
+
+/**
+ * Get bounds of the command line.
+ *
+ * @return bounds as `(row, num of columns)`.
+ */
+auto get_cmdline_bounds(const Mew& m) -> std::tuple<int, int> {
+    return {LINES - 1, COLS - 1};
+}
+
+/**
+ * Get bounds of the menu.
+ *
+ * @return bounds as `(first row, last row, num of columns)`.
+ */
+auto get_menu_bounds(const Mew& m) -> std::tuple<int, int, int> {
+    return {0, LINES - 2, COLS - 10};
+}
+
+/**
+ * Send signal to stop reading input and start shutting down.
+ */
+auto stop(Mew& m) -> void {
+    m.quit = true;
+}
+
+/**
+ * End ncurses and stop showing contents.
+ */
+auto close(Mew& m) -> void {
+    endwin();
+}
+
+/**
+ * Get all selected items.
+ *
+ * @return selected items.
+ */
+auto get_selections(Mew& m) -> vec<str> {
+    return mew::get_selections(m.menu);
+}
+
+/**
+ * Draw contents on the screen.
+ */
+auto show(Mew& m, const MenuData* menu_data = nullptr) -> void {
+    m.init_screen();
+    if (menu_data != nullptr) {
+        const auto& [results, attrs] = *menu_data;
+        setall(m.menu, results, attrs);
+    }
+
+    set_mode(m.cmdline, 'i');
+    while (true) {
+        int c = wgetch(stdscr);
+        bool handled = false;
+        if (isin(m.keymap, c)) {
+            handled = m.keymap[c](m, m.menu, m.cmdline);
+        }
+        if (m.quit) {
+            break;
+        }
+        if (not (handled or isin(cmd_modes, get_mode(m.cmdline)))) {
+            insert(m.cmdline, c);
+            if ((get_mode(m.cmdline) == '/') and (len(*getall(m.menu)) < m.incremental_thresh)) {
+                m.keymap[10](m, m.menu, m.cmdline);
+            }
+            else if ((get_mode(m.cmdline) == '?') and (m.incremental_file)) {
+                m.keymap[10](m, m.menu, m.cmdline);
+            }
+        }
+    }
+
+    close(m);
+}
+
+/**
+*/
+auto get_initdata(const Mew& m) -> cvec<Item>* { return m.global_data; }
+
+/**
+*/
+auto get_initfiles(const Mew& m) -> cvec<str>* { return m.global_filenames; }
+
+/**
+*/
+auto next_menu(Mew& m) -> const MenuHistoryElem* { return next(m.menu_history); }
+auto prev_menu(Mew& m) -> const MenuHistoryElem* { return prev(m.menu_history); }
+auto insert_menu(Mew& m, MenuHistoryElem&& e) -> void {
+    add_go_next(m.menu_history, e);
+}
+
+/**
+*/
+auto next_cmd(Mew& m) -> const Item* { return next(m.cmd_history); }
+auto prev_cmd(Mew& m) -> const Item* { return prev(m.cmd_history); }
+auto insert_cmd(Mew& m, Item&& c) -> void {
+    add_go_next(m.cmd_history, c);
+}
+/**
+*/
+auto getall_cmd(const Mew& m) -> cvec<Item>* { return getall(m.cmd_history); }
+
+/**
+*/
+auto next_qry(Mew& m) -> const Item* { return next(m.search_history); }
+auto prev_qry(Mew& m) -> const Item* { return prev(m.search_history); }
+auto insert_qry(Mew& m, Item&& q) -> void {
+    add_go_next(m.search_history, q);
+}
+/**
+*/
+auto getall_qry(const Mew& m) -> cvec<Item>* { return getall(m.search_history); }
 
 /**
 */
 auto fill_batch(vec2d<Item>& strings, std::istream& is, int batch_size, cstr& filename, long offset) -> long {
     auto n_threads = len(strings);
     auto line = str();
-    forall(strings, clear<vec<Item>>);
+    forall(strings, ::clear<vec<Item>>);
     for (int count = 0; count < batch_size; ++count) {
         for (int j = 0; j < n_threads; ++j) {
             if (not std::getline(is, line)) {
@@ -1232,11 +1381,8 @@ auto find_regex(cvec<Item>& items, cstr& pattern, bool parallel = false) -> Menu
             continue;
         }
         long unsigned int beg = match.data() - line.data();
-        matches.emplace_back(std::move(Item{"  ", line, item.filename, item.lineno}));
-        //append(matches, std::move(Item{"  ", line, item.filename, item.lineno}));
-        attrs.push_back({mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
-        //append(attrs, {mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
-        //attrs.push_back({mew::ItemAttr{beg, beg + len(match), A_REVERSE}});
+        append(matches, Item{"  ", line, item.filename, item.lineno});
+        append(attrs, vec<mew::ItemAttr>{mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
     }
     return {matches, attrs};
 }
@@ -1247,7 +1393,7 @@ template<typename T>
 auto fill_batch(vec2d<T>& strings, cvec<T>& items, int batch_size, int offset) -> int {
     auto n_items = len(items);
     auto n_threads = len(strings);
-    forall(strings, clear<vec<T>>);
+    forall(strings, ::clear<vec<T>>);
     for (int count = 0; count < batch_size; ++count) {
         for (int j = 0; j < n_threads; ++j) {
             if (offset >= n_items) {
@@ -1330,227 +1476,227 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
             return true;
         }
         if (mevent.bstate & BUTTON5_PRESSED) { // wheel down.
-            menu.scroll_down();
+            next(menu);
         }
         else if (mevent.bstate & BUTTON4_PRESSED) { // wheel up.
-            menu.scroll_up();
+            prev(menu);
         }
         else if (mevent.bstate & BUTTON1_CLICKED) { // left click.
             if (mevent.y < (LINES - 2)) {
-                menu.toggle_selection(mevent.y);
+                toggle_selection(menu, mevent.y);
             }
         }
         return true;
     };
     keymap[KEY_RESIZE] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
         wclear(stdscr);
-        menu.resize(mew.get_menu_bounds());
-        cmdline.resize(mew.get_cmdline_bounds());
+        resize(menu, get_menu_bounds(mew));
+        resize(cmdline, get_cmdline_bounds(mew));
         return true;
     };
     keymap[27] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        cmdline.set_mode('s');
+        set_mode(cmdline, 's');
         return true;
     };
     keymap['d'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.clear();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        clear(cmdline);
         return true;
     };
     keymap['i'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() == 'i') {
+        if (auto mode = get_mode(cmdline); mode == 'i') {
             return false;
         }
-        //if (cmdline.get_mode() == 's') {
-        if (std::ranges::find(cmd_modes, cmdline.get_mode()) != std::end(cmd_modes)) {
+        else if (isin(cmd_modes, mode)) {
             //cmdline.clear();
         }
         else {
             return false;
         }
-        cmdline.set_mode('i');
+        set_mode(cmdline, 'i');
         return true;
     };
     keymap['j'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        menu.scroll_down();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        next(menu);
         return true;
     };
     keymap[KEY_DOWN] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        menu.scroll_down();
+        next(menu);
         return true;
     };
     keymap['k'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        menu.scroll_up();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        prev(menu);
         return true;
     };
     keymap[KEY_UP] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        menu.scroll_up();
+        prev(menu);
         return true;
     };
     keymap['h'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.moveto_prev_char();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        prev(cmdline);
         return true;
     };
     keymap[KEY_LEFT] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        cmdline.moveto_prev_char();
+        prev(cmdline);
         return true;
     };
     keymap['l'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.moveto_next_char();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        next(cmdline);
         return true;
     };
     keymap[KEY_RIGHT] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        cmdline.moveto_next_char();
+        next(cmdline);
         return true;
     };
     keymap[' '] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        menu.toggle_selection();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        toggle_selection(menu);
         return true;
     };
     keymap[KEY_BACKSPACE] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.pop();
+        if (isin(cmd_modes, get_mode(cmdline))) return false;
+        erase(cmdline);
         return true;
     };
     keymap['q'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        mew.stop();
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        stop(mew);
         return true;
     };
     keymap['X'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() == 'X') return false;
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.set_mode('X');
+        if (get_mode(cmdline) == 'X') return false;
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        set_mode(cmdline, 'X');
         return true;
     };
     keymap['x'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() == 'x') return false;
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.set_mode('x');
+        if (get_mode(cmdline) == 'x') return false;
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        set_mode(cmdline, 'x');
         return true;
     };
     keymap['/'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.set_mode('/');
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        set_mode(cmdline, '/');
         return true;
     };
     keymap['?'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        cmdline.set_mode('?');
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        set_mode(cmdline, '?');
         return true;
     };
     // TODO: this is the same as H.
     keymap['L'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        if (auto mh = mew.menu_history.next(); mh != nullptr) {
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        if (auto mh = next_menu(mew); mh != nullptr) {
             const auto& [items, attrs] = mh->menu_data;
-            menu.set_items(items, attrs);
-            cmdline.set_text(mh->text);
+            setall(menu, items, attrs);
+            set_text(cmdline, mh->text);
         }
         return true;
     };
     keymap['H'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) return false;
-        if (auto mh = mew.menu_history.prev(); mh != nullptr) {
+        if (not isin(cmd_modes, get_mode(cmdline))) return false;
+        if (auto mh = prev_menu(mew); mh != nullptr) {
             const auto& [items, attrs] = mh->menu_data;
-            menu.set_items(items, attrs);
-            cmdline.set_text(mh->text);
+            setall(menu, items, attrs);
+            set_text(cmdline, mh->text);
         }
         return true;
     };
     keymap['C'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() != 's') return false;
-        menu.toggle_info();
+        if (get_mode(cmdline) != 's') return false;
+        toggle_info(menu);
         return true;
     };
     keymap['F'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() != 's') return false;
-        if (auto h = mew.cmd_history.get_all(); not std::empty(*h)) {
-            menu.set_items(*h, {});
+        if (get_mode(cmdline) != 's') return false;
+        if (auto h = getall_cmd(mew); not std::empty(*h)) {
+            setall(menu, *h, {});
         }
-        cmdline.set_mode('F');
+        set_mode(cmdline, 'F');
         return true;
     };
     keymap['f'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (cmdline.get_mode() != 's') return false;
-        if (auto h = mew.search_history.get_all(); not std::empty(*h)) {
-            menu.set_items(*h, {});
+        if (get_mode(cmdline) != 's') return false;
+        if (auto h = getall_qry(mew); not std::empty(*h)) {
+            setall(menu, *h, {});
         }
-        cmdline.set_mode('f');
+        set_mode(cmdline, 'f');
         return true;
     };
     keymap[10] = [parallel](Mew& mew, Menu& menu, CommandLine& cmdline) {
-        if (auto mode = cmdline.get_mode(); (mode == '/') or (mode == '?')) {
+        if (auto mode = get_mode(cmdline); (mode == '/') or (mode == '?')) {
             MenuData md;
-            if (auto items = menu.get_items(); mode == '/') {
-                if (cmdline.get_text()[0] == '/') {
-                    md = find_regex(*items, cmdline.get_text().substr(1), parallel);
+            const auto cmd_text = get_text(cmdline);
+            if (auto items = getall(menu); mode == '/') {
+                if (cmd_text[0] == '/') {
+                    md = find_regex(*items, cmd_text.substr(1), parallel);
                 }
                 else {
-                    md = find_fuzzy(*items, cmdline.get_text(), parallel);
+                    md = find_fuzzy(*items, cmd_text, parallel);
                 }
             }
-            else if (std::empty(*(mew.global_filenames))) {
-                if (cmdline.get_text()[0] == '/') {
-                    md = find_regex(*(mew.global_data), cmdline.get_text().substr(1), parallel);
+            else if (std::empty(*get_initfiles(mew))) {
+                if (cmd_text[0] == '/') {
+                    md = find_regex(*get_initdata(mew), cmd_text.substr(1), parallel);
                 }
                 else {
-                    md = find_fuzzy(*(mew.global_data), cmdline.get_text(), parallel);
+                    md = find_fuzzy(*get_initdata(mew), cmd_text, parallel);
                 }
             }
             else {
-                if (cmdline.get_text()[0] == '/') {
-                    md = find_regex_files(*(mew.global_filenames), cmdline.get_text().substr(1), parallel);
+                if (cmd_text[0] == '/') {
+                    md = find_regex_files(*get_initfiles(mew), cmd_text.substr(1), parallel);
                 }
                 else {
-                    md = find_fuzzy_files(*(mew.global_filenames), cmdline.get_text(), parallel);
+                    md = find_fuzzy_files(*get_initfiles(mew), cmd_text, parallel);
                 }
             }
             const auto& [new_items, attrs] = md;
 
             if (not std::empty(new_items)) {
-                menu.set_items(new_items, attrs);
+                setall(menu, new_items, attrs);
                 auto menu_hist_elem = MenuHistoryElem{
                     .menu_data = std::make_tuple(std::move(new_items), std::move(attrs)),
-                        .text = cmdline.get_text(),
+                        .text = cmd_text,
                 };
-                mew.menu_history.add_go_next(std::move(menu_hist_elem));
+               insert_menu(mew, std::move(menu_hist_elem));
             }
-            mew.search_history.add_go_next(Item{"  ", mode + cmdline.get_text(), "", -1});
+            insert_qry(mew, Item{"  ", mode + cmd_text, "", -1});
             return true;
         }
-        else if (auto mode = cmdline.get_mode(); (mode == 'f')) {
-            auto text = menu.get_highlighted();
-            cmdline.set_text(str(std::begin(text) + 1, std::end(text)));
-            cmdline.set_mode(text[0]);
+        else if (auto mode = get_mode(cmdline); (mode == 'f')) {
+            auto text = current(menu);
+            set_text(cmdline, str(std::begin(text) + 1, std::end(text)));
+            set_mode(cmdline, text[0]);
             //keymap[10](mew, menu, cmdline);
             return true;
         }
-        else if (auto mode = cmdline.get_mode(); (mode == 'F')) {
+        else if (auto mode = get_mode(cmdline); (mode == 'F')) {
             // TODO: this is the same as `c`.
-            auto text = menu.get_highlighted();
-            cmdline.set_text(str(std::begin(text) + 1, std::end(text)));
-            cmdline.set_mode(text[0]);
+            auto text = current(menu);
+            set_text(cmdline, str(std::begin(text) + 1, std::end(text)));
+            set_mode(cmdline, text[0]);
             //keymap[10](mew, menu, cmdline);
             return true;
         }
-        else if (auto mode = cmdline.get_mode(); (mode == 'X')) {
-            cmdline.set_mode('s');
-            make_populatemenu_cmd(cmdline.get_text())(mew, menu, cmdline);
-            cmdline.set_mode('X');
-            mew.cmd_history.add(Item{"  ", 'X' + cmdline.get_text(), "", -1});
+        else if (auto mode = get_mode(cmdline); (mode == 'X')) {
+            set_mode(cmdline, 's');
+            make_populatemenu_cmd(get_text(cmdline))(mew, menu, cmdline);
+            set_mode(cmdline, 'X');
+            insert_cmd(mew, Item{"  ", 'X' + get_text(cmdline), "", -1});
             return true;
         }
-        else if (auto mode = cmdline.get_mode(); (mode == 'x')) {
-            cmdline.set_mode('s');
-            make_interactive_cmd(cmdline.get_text())(mew, menu, cmdline);
-            cmdline.set_mode('x');
-            mew.cmd_history.add(Item{"  ", 'x' + cmdline.get_text(), "", -1});
+        else if (auto mode = get_mode(cmdline); (mode == 'x')) {
+            set_mode(cmdline, 's');
+            make_interactive_cmd(get_text(cmdline))(mew, menu, cmdline);
+            set_mode(cmdline, 'x');
+            insert_cmd(mew, Item{"  ", 'x' + get_text(cmdline), "", -1});
             return true;
         }
         return false;
@@ -1571,72 +1717,48 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
     return keymap;
 }
 
-auto replace_all(cstr& line, char old, cstr& rep) -> str {
-    auto new_cmd = str("");
-    auto seq = line.data();
-    const auto end = seq + len(line);
-    const auto start = seq;
-    auto beg = seq;
-    auto old_str = str() + old;
-    while (seq) {
-        seq = strpbrk(seq, old_str.c_str());
-        if (not seq) break;
-        if (seq != start) {
-            new_cmd += line.substr(beg - start, seq - beg);
-        }
-        new_cmd += rep;
-        beg = seq = seq + 1;
-    }
-    return new_cmd;
-}
-
 /**
 */
 template<typename T, typename A>
 auto join(T beg, T end, const A& delim) -> A {
     auto s = A();
     for (; beg < (end - 1); ++beg) {
-        s += *beg + delim;
+        concat(s, *beg);
+        concat(s, delim);
     }
-    s += *beg;
+    concat(s, *beg);
     return s;
 }
 
 /**
 */
 template<typename T, typename A>
-auto join(T&& strings, const A& delim) -> A {
-    return join(std::begin(strings), std::end(strings), delim);
+auto join(T&& t, const A& delim) -> A {
+    return join(std::begin(t), std::end(t), delim);
 }
 
 /**
 */
 template<typename T, typename A>
-auto join(T& strings, const A& delim) -> A {
-    return join(std::begin(strings), std::end(strings), delim);
+auto join(T& t, const A& delim) -> A {
+    return join(std::begin(t), std::end(t), delim);
 }
 
 /**
 */
 auto split(cstr& s, char delim) -> vec<str> {
     auto strings = vec<str>();
-    auto seq = s.data();
-    auto beg = seq;
-    const auto start = seq;
+    auto cur = s.data();
+    auto beg = cur;
+    const auto start = cur;
     auto delim_str = str() + delim;
-    while (seq) {
-        seq = strpbrk(seq, delim_str.c_str());
-        if (not seq) break;
-        if (seq == start) strings.push_back("");
-        //if (seq == start) append(strings, "");
-        else strings.push_back(s.substr(beg - start, seq - beg));
-        //else append(strings, s.substr(beg - start, seq - beg));
-        beg = seq = seq + 1;
+    while (cur) {
+        cur = strpbrk(cur, delim_str.c_str());
+        if (not cur) break;
+        else append(strings, s.substr(beg - start, cur - beg));
+        beg = cur = cur + 1;
     }
-    if (beg < (s.data() + len(s))) {
-        strings.push_back(s.substr(beg - start));
-        //append(strings, s.substr(beg - start));
-    }
+    if (beg < (s.data() + len(s))) append(strings, s.substr(beg - start));
     return strings;
 }
 
@@ -1659,14 +1781,16 @@ auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep
         }
         else if (we[j][0] == 'h') {
             if (std::empty(hrepp)) {
-                hrepp = "'" + join(split(hrep, '\''),  std::string("'\\''")) + "'";
+                hrepp = " '" + join(split(hrep, '\''),  str("'\\''")) + "' ";
             }
             joined_str += hrepp + we[j].substr(1);
         }
         else if (we[j][0] == 's') {
             if (std::empty(srepp)) {
                 for (const auto& selection : srep) {
-                    srepp += " '" + join(split(selection, '\''),  std::string("'\\''")) + "'";
+                    srepp += " '"
+                        + join(split(selection, '\''),  str("'\\''"))
+                        + "' ";
                 }
             }
             joined_str += srepp + we[j].substr(1);
@@ -1674,7 +1798,9 @@ auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep
         else if (we[j][0] == 'a') {
             if (std::empty(arepp)) {
                 for (const auto& item : arep) {
-                    arepp += " '" + join(split(item.text, '\''),  std::string("'\\''")) + "'";
+                    arepp += " '"
+                        + join(split(item.text, '\''),  str("'\\''"))
+                        + "' ";
                 }
             }
             joined_str += arepp + we[j].substr(1);
@@ -1691,10 +1817,10 @@ auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep
 */
 auto make_interactive_cmd(str cmd) -> KeyCommand {
     return [=](mew::Mew& mew, mew::Menu& menu, mew::CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) {
+        if (not isin(cmd_modes, get_mode(cmdline))) {
             return false;
         }
-        auto new_cmd = replace_unescaped(cmd, menu.get_selections(), *menu.get_items(), menu.get_highlighted());
+        auto new_cmd = replace_unescaped(cmd, get_selections(menu), *getall(menu), current(menu));
         if (not std::empty(new_cmd)) {
             std::system(new_cmd.c_str());
         }
@@ -1710,15 +1836,14 @@ auto make_interactive_cmd(str cmd) -> KeyCommand {
 */
 auto make_populatemenu_cmd(str cmd) -> KeyCommand {
     return [=](mew::Mew& mew, mew::Menu& menu, mew::CommandLine& cmdline) {
-        if (not isin(cmd_modes, cmdline.get_mode())) {
+        if (not isin(cmd_modes, get_mode(cmdline))) {
             return false;
         }
 
         auto cmd_str = cmd;
-        auto new_cmd1 = replace_unescaped(cmd, menu.get_selections(), *menu.get_items(), menu.get_highlighted());
+        auto new_cmd1 = replace_unescaped(cmd, get_selections(menu), *getall(menu), current(menu));
         auto new_cmd = std::empty(new_cmd1) ? cmd_str.c_str(): new_cmd1.c_str();
-        FILE* fd = popen(new_cmd, "r");
-        if (fd == NULL) {
+        FILE* fd = popen(new_cmd, "r"); if (fd == NULL) {
             return true;
         }
 
@@ -1728,24 +1853,21 @@ auto make_populatemenu_cmd(str cmd) -> KeyCommand {
         while (fgets(line, n_bytes, fd) != NULL) {
             auto line_len = len(line);
             auto n_chars = line[line_len - 1] == '\n' ? line_len - 1 : line_len;
-            append(lines, Item{"  ", str(line, n_chars), "", -1});
+            append(lines, mew::newItem(str(line, n_chars)));
         }
         int status = pclose(fd);
 
-        auto attrs = mew::LineAttrs();
-        menu.set_items(lines, attrs);
         if (not std::empty(lines)) {
+            setall(menu, lines, {});
             auto menu_hist_elem = MenuHistoryElem{
-                .menu_data = std::make_tuple(std::move(lines), std::move(attrs)),
-                .text = cmdline.get_text(),
+                .menu_data = std::make_tuple(std::move(lines), mew::LineAttrs()),
+                .text = get_text(cmdline),
             };
-            mew.menu_history.add_go_next(std::move(menu_hist_elem));
+            insert_menu(mew, std::move(menu_hist_elem));
         }
         return true;
     };
 }
-
-
 
 } // namespace mew
 
@@ -1823,11 +1945,7 @@ auto get_cmdline_args(int argc, char* argv[]) -> CmdLineArgs {
 */
 auto get_filenames_from_stdin() -> vec<str> {
     auto lines = vec<str>();
-    str line;
-    while (std::getline(std::cin, line)) {
-        lines.emplace_back(line);
-        //append(lines, std::move(line));
-    }
+    mapall(std::cin, lines, identity<str>);
     return lines;
 }
 
@@ -1835,12 +1953,8 @@ auto get_filenames_from_stdin() -> vec<str> {
 */
 auto get_input_from_stdin() -> mew::MenuData {
     auto lines = vec<mew::Item>();
-    str line;
-    while (std::getline(std::cin, line)) {
-        lines.emplace_back(mew::Item{"  ", line, "", -1});
-        //append(lines, std::move(mew::Item{"  ", line, "", -1}));
-    }
-    return std::make_tuple(lines, mew::LineAttrs());
+    mapall(std::cin, lines, mew::newItem);
+    return {lines, mew::LineAttrs()};
 }
 
 /**
@@ -1878,7 +1992,7 @@ auto read_config(cstr& filename) -> std::tuple<map<int, mew::KeyCommand>, map<in
                 printf(invalid_icmd_msg.c_str(), lineno);
                 exit(1);
             }
-            auto cmd = mew::join(std::cbegin(fields) + 2, std::cend(fields), std::string(" "));
+            auto cmd = mew::join(std::cbegin(fields) + 2, std::cend(fields), str(" "));
             keymap[fields[1][0]] = mew::make_interactive_cmd(cmd);
         }
         else if (line.starts_with("cmd ")) {
@@ -1887,7 +2001,7 @@ auto read_config(cstr& filename) -> std::tuple<map<int, mew::KeyCommand>, map<in
                 printf(invalid_cmd_msg.c_str(), lineno);
                 exit(1);
             }
-            auto cmd = mew::join(std::cbegin(fields) + 2, std::cend(fields), std::string(" "));
+            auto cmd = mew::join(std::cbegin(fields) + 2, std::cend(fields), str(" "));
             keymap[fields[1][0]] = mew::make_populatemenu_cmd(cmd);
         }
     }
@@ -1909,28 +2023,27 @@ auto main(int argc, char *argv[]) -> int {
 
     auto args = get_cmdline_args(argc, argv);
     if (args.stdin_files) {
-        auto al = get_filenames_from_stdin();
-        forall(al, [&](auto& a) {append(args.filenames, std::move(a));});
-        //concat(args.filenames, std::move(al));
+        concat(args.filenames, get_filenames_from_stdin());
     }
-    const auto& [keymap, remap] = read_config(args.config);
+    auto [keymap, remap] = read_config(args.config);
 
+    auto menu_data = mew::MenuData();
+    auto data = vec<mew::Item>();
     if (std::empty(args.filenames)) {
-        auto menu_data = get_input_from_stdin();
-        auto mew = mew::Mew(keymap, remap, args.incremental_thresh, args.incremental_file, args.parallel);
-        mew.global_data = &std::get<0>(menu_data);
-        mew.global_filenames = &args.filenames;
-        mew.show(menu_data);
-        forall(mew.get_selections(), print<str>);
+        menu_data = get_input_from_stdin();
+        data = std::get<0>(menu_data);
     }
-    else {
-        auto mew = mew::Mew(keymap, remap, args.incremental_thresh, args.incremental_file, args.parallel);
-        auto empty_vec = vec<mew::Item>();
-        mew.global_data = &empty_vec;
-        mew.global_filenames = &args.filenames;
-        mew.show();
-        forall(mew.get_selections(), print<str>);
-    }
+
+    auto mew = mew::Mew(
+            std::move(keymap),
+            std::move(remap),
+            &data,
+            &args.filenames,
+            args.incremental_thresh,
+            args.incremental_file,
+            args.parallel);
+    show(mew, std::empty(args.filenames) ? &menu_data : nullptr);
+    forall(get_selections(mew), print<str>);
 
     return 0;
 }
