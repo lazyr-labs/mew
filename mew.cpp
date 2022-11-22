@@ -243,7 +243,7 @@ class Item {
 /**
 */
 auto set_selected(Item& i, bool is_selected) -> void {
-    i.info[0] = is_selected ? ' ' : '*';
+    i.info[0] = is_selected ? '*' : ' ';
 }
 
 /**
