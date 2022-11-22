@@ -6,7 +6,6 @@
 // * preview (press o in select mode)
 // * custom config (colors, commands)
 // * unicode
-// * segfault when executing command at startup with unpopulated menu
 // * segfault if config file doesn't exist
 // * select in f and F mode
 #include <execution>
@@ -551,7 +550,7 @@ auto prev(Scroller& s) -> std::tuple<int, int, int> {
 class Menu {
     friend auto prev(Menu& m) -> void;
     friend auto next(Menu& m) -> void;
-    friend auto current(const Menu& m) -> str;
+    friend auto current(const Menu& m) -> cstr*;
     friend auto getall(const Menu& m) -> cvec<Item>*;
     friend auto resize(Menu& m, const std::tuple<int, int, int>& bounds) -> void;
     friend auto setall(Menu& m, cvec<Item>& items, cvec2d<ItemAttr>& attrs) -> void;
@@ -841,9 +840,10 @@ auto next(Menu& m) -> void {
  *
  * @return selected items.
  */
-auto current(const Menu& m) -> str {
+auto current(const Menu& m) -> cstr* {
+    if (std::empty(m.items)) return nullptr;
     auto [c, db, di] = current(m.scroller);
-    return *get_text(m.items[di]);
+    return get_text(m.items[di]);
 }
 
 /**
@@ -1745,7 +1745,8 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
             return true;
         }
         else if (auto mode = get_mode(cmdline); (mode == 'f')) {
-            auto text = current(menu);
+            if (current(menu) == nullptr) return true;
+            auto text = *current(menu);
             set_text(cmdline, str(std::begin(text) + 1, std::end(text)));
             set_mode(cmdline, text[0]);
             //keymap[10](mew, menu, cmdline);
@@ -1753,7 +1754,8 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
         }
         else if (auto mode = get_mode(cmdline); (mode == 'F')) {
             // TODO: this is the same as `c`.
-            auto text = current(menu);
+            if (current(menu) == nullptr) return true;
+            auto text = *current(menu);
             set_text(cmdline, str(std::begin(text) + 1, std::end(text)));
             set_mode(cmdline, text[0]);
             //keymap[10](mew, menu, cmdline);
@@ -1838,30 +1840,32 @@ auto split(cstr& s, char delim) -> vec<str> {
 
 /**
 */
-auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep) -> str {
+auto replace_unescaped(cstr& line, const Menu& menu) -> str {
     auto we = split(line, '%');
     if (len(we) == 1) {
         return we[0];
     }
 
-    auto srepp = str();
-    auto arepp = str();
-    auto hrepp = str();
+    auto srepp = str() + " ";
+    auto arepp = str() + " ";
+    auto hrepp = str() + " ";
     auto joined_str = we[0];
     auto n = len(we);
     for (int j = 1; j < n; ++j) {
         if (we[j - 1].back() == '%') {
             joined_str += we[j];
         }
-        else if (we[j][0] == 'h') {
+        else if ((we[j][0] == 'h') && (current(menu) != nullptr)) {
             if (std::empty(hrepp)) {
-                hrepp = " '" + join(split(hrep, '\''),  str("'\\''")) + "' ";
+                hrepp = " '"
+                    + join(split(*current(menu), '\''),  str("'\\''"))
+                    + "' ";
             }
             joined_str += hrepp + we[j].substr(1);
         }
         else if (we[j][0] == 's') {
             if (std::empty(srepp)) {
-                for (const auto& selection : srep) {
+                for (const auto& selection : get_selections(menu)) {
                     srepp += " '"
                         + join(split(selection, '\''),  str("'\\''"))
                         + "' ";
@@ -1871,7 +1875,7 @@ auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep
         }
         else if (we[j][0] == 'a') {
             if (std::empty(arepp)) {
-                for (const auto& item : arep) {
+                for (const auto& item : *getall(menu)) {
                     arepp += " '"
                         + join(split(*get_text(item), '\''),  str("'\\''"))
                         + "' ";
@@ -1894,7 +1898,7 @@ auto make_interactive_cmd(str cmd) -> KeyCommand {
         if (not isin(cmd_modes, get_mode(cmdline))) {
             return false;
         }
-        auto new_cmd = replace_unescaped(cmd, get_selections(menu), *getall(menu), current(menu));
+        auto new_cmd = replace_unescaped(cmd, menu);
         if (not std::empty(new_cmd)) {
             std::system(new_cmd.c_str());
         }
@@ -1915,7 +1919,7 @@ auto make_populatemenu_cmd(str cmd) -> KeyCommand {
         }
 
         auto cmd_str = cmd;
-        auto new_cmd1 = replace_unescaped(cmd, get_selections(menu), *getall(menu), current(menu));
+        auto new_cmd1 = replace_unescaped(cmd, menu);
         auto new_cmd = std::empty(new_cmd1) ? cmd_str.c_str(): new_cmd1.c_str();
         FILE* fd = popen(new_cmd, "r"); if (fd == NULL) {
             return true;
