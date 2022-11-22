@@ -6,7 +6,6 @@
 // * preview (press o in select mode)
 // * custom config (colors, commands)
 // * unicode
-// * segfault when resizing in input mode
 // * segfault when executing command at startup with unpopulated menu
 // * segfault if config file doesn't exist
 // * select in f and F mode
@@ -687,6 +686,9 @@ class Menu {
          * points to the `data_idx`th item.
         */
         auto show_items(int start_idx, int n_items, int cursor, int data_idx, bool info = false) -> void {
+            if (std::empty(items)) {
+                return;
+            }
             for (int j = start_idx; j < (start_idx + n_items); ++j) {
                 show_item(j, j - start_idx, info);
             }
