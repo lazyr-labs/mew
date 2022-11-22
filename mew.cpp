@@ -151,6 +151,10 @@ auto len(const char* t) -> auto { return strlen(t); }
 
 /**
 */
+auto len(cstr* s) -> auto { return len(*s); }
+
+/**
+*/
 template<typename T, typename A>
 auto remove(T& t, A a) -> void { t.erase(a); }
 
@@ -216,24 +220,52 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
  * * text: the string to show.
  * * info: string containing status information.
 */
-struct Item {
-    str info;
-    str text;
-    str filename;
-    long lineno;
+class Item {
+    friend auto get_text(const Item& i) -> cstr*;
+    friend auto get_info(const Item& i) -> cstr*;
+    friend auto get_filename(const Item& i) -> cstr*;
+    friend auto get_lineno(const Item& i) -> long;
+    friend auto tostr(const Item& i) -> str;
+    friend auto tostrp(const Item& i) -> const str*;
+    friend auto set_selected(Item& i, bool is_selected) -> void;
+
+    public:
+        Item(cstr& text) : info("  "), text(text), filename(""), lineno(-1) {}
+
+        Item(cstr& text, cstr& filename, long lineno)
+            : info("  "), text(text), filename(filename), lineno(lineno) {}
+
+    private:
+        str info;
+        str text;
+        str filename;
+        long lineno;
 };
 
 /**
 */
-auto tostr(const Item& item) -> str {return item.text;}
+auto set_selected(Item& i, bool is_selected) -> void {
+    i.info[0] = is_selected ? ' ' : '*';
+}
 
 /**
 */
-auto newItem(cstr& text) -> Item { return Item{"  ", text, "", -1}; }
+auto get_text(const Item& i) -> cstr* { return &(i.text); }
+auto get_info(const Item& i) -> cstr* { return &(i.info); }
+auto get_filename(const Item& i) -> cstr* { return &(i.filename); }
+auto get_lineno(const Item& i) -> long { return i.lineno; }
 
 /**
 */
-auto tostrp(const Item& item) -> const str* {return &(item.text);}
+auto tostr(const Item& i) -> str {return i.text;}
+
+/**
+*/
+auto newItem(cstr& text) -> Item { return Item(text); }
+
+/**
+*/
+auto tostrp(const Item& i) -> const str* {return &(i.text);}
 
 /**
  * Attributes associated with substrings of an `Item`.
@@ -242,11 +274,37 @@ auto tostrp(const Item& item) -> const str* {return &(item.text);}
  * * end: index of item at which to stop the attributes.
  * * attrs: ncurses attributes to apply to the interval.
 */
-struct ItemAttr {
-    long unsigned int beg;
-    long unsigned int end;
-    int attrs;
+class ItemAttr {
+    friend auto translate(const ItemAttr& i, int start) -> std::tuple<int, int>;
+    friend auto getend(const ItemAttr& i) -> long unsigned int;
+    friend auto getbeg(const ItemAttr& i) -> long unsigned int;
+    friend auto getattr(const ItemAttr& i) -> int;
+
+    public:
+        ItemAttr(long unsigned int beg, long unsigned int end, int attrs)
+            : beg(beg), end(end), attrs(attrs) {}
+
+    private:
+        long unsigned int beg;
+        long unsigned int end;
+        int attrs;
 };
+
+auto getend(const ItemAttr& i) -> long unsigned int {return i.end;}
+auto getbeg(const ItemAttr& i) -> long unsigned int {return i.beg;}
+auto getattr(const ItemAttr& i) -> int {return i.attrs;}
+
+/**
+*/
+// Translate the bounds based on `start` being
+// the origin.
+auto translate(const ItemAttr& i, int start) -> std::tuple<int, int> {
+    int attr_beg = i.beg - start;
+    attr_beg = (attr_beg < 0 ? 0 : attr_beg);
+    int attr_end = (i.end - start);
+    return {attr_beg, attr_end};
+}
+
 using Lines = vec<Item>;
 using LineAttrs = vec<vec<ItemAttr>>;
 using MenuData = std::tuple<Lines, LineAttrs>;
@@ -260,16 +318,34 @@ auto find_regex_files_parallel(cvec<str>& filenames, cstr& pattern) -> MenuData;
 /**
 */
 auto newItemAttr(long unsigned int idx) -> ItemAttr {
-    return ItemAttr{idx, idx + 1, COLOR_PAIR(2)};
+    return ItemAttr(idx, idx + 1, COLOR_PAIR(2));
             //cur_attrs.emplace_back(mew::ItemAttr{aj, aj + 1, A_REVERSE});
 }
 
 /**
 */
-struct MenuHistoryElem {
-    MenuData menu_data;
-    str text;
+class MenuHistoryElem {
+    friend auto get_data(const MenuHistoryElem& m) -> const MenuData*;
+    friend auto get_text(const MenuHistoryElem& m) -> cstr*;
+
+    public:
+        MenuHistoryElem(MenuData&& md, cstr& text)
+            : menu_data(md), text(text) {}
+
+    private:
+        MenuData menu_data;
+        str text;
 };
+
+/**
+*/
+auto get_text(const MenuHistoryElem& m) -> cstr* { return &(m.text); }
+
+/**
+*/
+auto get_data(const MenuHistoryElem& m) -> const MenuData* {
+    return &(m.menu_data);
+}
 
 /**
  * Class for managing scrolling.
@@ -525,7 +601,7 @@ class Menu {
         auto draw_status(int item_idx, int line_idx) -> void {
             wmove(window, line_idx, 0);
             wclrtoeol(window);
-            waddnstr(window, items[item_idx].info.c_str(), len(items[item_idx].info));
+            waddnstr(window, get_info(items[item_idx])->c_str(), len(get_info(items[item_idx])));
         }
 
         /**
@@ -538,8 +614,8 @@ class Menu {
             if (len(item_attrs) != len(items)) {
                 return 0;
             }
-            auto n_cols_after_info = n_cols - len(items[item_idx].info);
-            auto last_end = item_attrs[item_idx].back().end;
+            auto n_cols_after_info = n_cols - len(get_info(items[item_idx]));
+            auto last_end = getend(item_attrs[item_idx].back());
             if (last_end > n_cols_after_info) {
                 return last_end - n_cols_after_info;
                 // Uncomment to have the last attribute shown in the
@@ -559,22 +635,18 @@ class Menu {
                 return;
             }
 
-            auto info_len = len(items[item_idx].info);
+            auto info_len = len(get_info(items[item_idx]));
             for (const auto& attrs : item_attrs[item_idx]) {
-                if (attrs.end < start) {
+                if (getend(attrs) < start) {
                     continue;
                 }
 
-                // Translate the bounds based on `start` being
-                // the origin.
-                int attr_beg = attrs.beg - start;
-                attr_beg = (attr_beg < 0 ? 0 : attr_beg);
-                int attr_end = (attrs.end - start);
+                auto [attr_beg, attr_end] = translate(attrs, start);
 
                 wmove(window, line_idx, attr_beg + info_len);
-                wattron(window, attrs.attrs);
+                wattron(window, getattr(attrs));
                 waddnstr(window, str + attr_beg, attr_end - attr_beg);
-                wattroff(window, attrs.attrs);
+                wattroff(window, getattr(attrs));
             }
         }
 
@@ -586,15 +658,15 @@ class Menu {
             draw_status(item_idx, line_idx);
 
             int start = get_item_start(item_idx);
-            auto str = items[item_idx].text.c_str() + start;
-            auto info_len = len(items[item_idx].info);
+            auto str = get_text(items[item_idx])->c_str() + start;
+            auto info_len = len(get_info(items[item_idx]));
 
             if (info) {
                 wmove(window, line_idx, info_len);
-                str = items[item_idx].filename.c_str();
-                auto lineno = std::to_string(items[item_idx].lineno);
-                if (len(items[item_idx].filename) > (n_cols - info_len - len(lineno) - 1)) {
-                    str += len(items[item_idx].filename) - (n_cols - info_len - len(lineno) - 1);
+                str = get_filename(items[item_idx])->c_str();
+                auto lineno = std::to_string(get_lineno(items[item_idx]));
+                if (len(*get_filename(items[item_idx])) > (n_cols - info_len - len(lineno) - 1)) {
+                    str += len(*get_filename(items[item_idx])) - (n_cols - info_len - len(lineno) - 1);
                 }
                 waddnstr(window, lineno.c_str(), n_cols - info_len);
                 waddnstr(window, " " , n_cols - info_len);
@@ -644,7 +716,7 @@ class Menu {
 auto get_selections(const Menu& m) -> vec<str> {
     auto selections = newVecReserve<str>(len(m.selected_items));
     for (const auto& item_idx : m.selected_items) {
-        append(selections, m.items[item_idx].text);
+        append(selections, *get_text(m.items[item_idx]));
     }
     return selections;
 }
@@ -668,11 +740,11 @@ auto toggle_selection(Menu& m) -> void {
     auto [c, db, di] = current(m.scroller);
     if (isin(m.selected_items, di)) {
         remove(m.selected_items, di);
-        m.items[di].info[0] = ' ';
+        set_selected(m.items[di], false);
     }
     else {
         insert(m.selected_items, di);
-        m.items[di].info[0] = '*';
+        set_selected(m.items[di], true);
     }
     m.show_item(di, c, m.show_info);
     m.highlight(c, di);
@@ -769,7 +841,7 @@ auto next(Menu& m) -> void {
  */
 auto current(const Menu& m) -> str {
     auto [c, db, di] = current(m.scroller);
-    return m.items[di].text;
+    return *get_text(m.items[di]);
 }
 
 /**
@@ -1072,7 +1144,7 @@ class Mew {
          *      This takes the text from the command line as input
          *      and returns a list of strings and attributes.
         */
-        Mew(map<int, KeyCommand>&& user_keymap, map<int, int>&& remap, vec<Item>* global_data,  vec<str>* global_filenames, int incremental_thresh=500000, int incremental_file=false, bool parallel = false) : selected_strings(), menu(), cmdline(), quit(false) {
+        Mew(map<int, KeyCommand>&& user_keymap, map<int, int>&& remap, cvec<Item>* global_data,  cvec<str>* global_filenames, int incremental_thresh=500000, int incremental_file=false, bool parallel = false) : selected_strings(), menu(), cmdline(), quit(false) {
             this->user_keymap = user_keymap;
             this->remap = remap;
             this->parallel = parallel;
@@ -1133,8 +1205,8 @@ class Mew {
         map<int, KeyCommand> user_keymap;
         map<int, int> remap;
         bool parallel;
-        vec<Item>* global_data;
-        vec<str>* global_filenames;
+        cvec<Item>* global_data;
+        cvec<str>* global_filenames;
 };
 
 /**
@@ -1261,7 +1333,7 @@ auto fill_batch(vec2d<Item>& strings, std::istream& is, int batch_size, cstr& fi
             if (not std::getline(is, line)) {
                 return -1;
             }
-            append(strings[j], Item{"  ", line, filename, offset});
+            append(strings[j], Item(line, filename, offset));
             ++offset;
         }
     }
@@ -1290,7 +1362,7 @@ auto find_fuzzy_files(cvec<str>& filenames, cstr& pattern, bool parallel = false
     auto file_matches = newVecReserve<Item>(len(scores));
     auto attrs = newVecReserve<vec<ItemAttr>>(len(scores));
     for (const auto& [score, match] : scores) {
-        append(file_matches, Item{"  ", match.text, match.filename, match.lineno});
+        append(file_matches, Item(match.text, match.filename, match.lineno));
 
         auto cur_attrs = newVecReserve<ItemAttr>(len(score.path));
         mapall(score.path, cur_attrs, mew::newItemAttr);
@@ -1323,7 +1395,7 @@ auto find_fuzzy(cvec<Item>& items, cstr& pattern, bool parallel = false) -> Menu
     auto file_matches = newVecReserve<Item>(1);
     auto attrs = newVecReserve<vec<ItemAttr>>(1);
     for (const auto& [score, match] : scores) {
-        append(file_matches, Item{"  ", match.text, match.filename, match.lineno});
+        append(file_matches, Item(match.text, match.filename, match.lineno));
 
         auto cur_attrs = newVecReserve<ItemAttr>(len(score.path));
         mapall(score.path, cur_attrs, mew::newItemAttr);
@@ -1353,10 +1425,10 @@ auto find_regex_files(cvec<str>& filenames, cstr& pattern, bool parallel = false
                 continue;
             }
             long unsigned int beg = match.data() - line.data();
-            attrs.push_back({mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
+            attrs.push_back({mew::ItemAttr(beg, beg + len(match), COLOR_PAIR(2))});
             //append(attrs, {mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
             //attrs.push_back({mew::ItemAttr{beg, beg + len(match), A_REVERSE}});
-            file_matches.push_back({"", line, filename, lineno});
+            file_matches.push_back(Item(line, filename, lineno));
             //append(file_matches, {"", line, filename, lineno});
         }
         is.close();
@@ -1381,8 +1453,8 @@ auto find_regex(cvec<Item>& items, cstr& pattern, bool parallel = false) -> Menu
             continue;
         }
         long unsigned int beg = match.data() - line.data();
-        append(matches, Item{"  ", line, item.filename, item.lineno});
-        append(attrs, vec<mew::ItemAttr>{mew::ItemAttr{beg, beg + len(match), COLOR_PAIR(2)}});
+        append(matches, Item(line, *get_filename(item), get_lineno(item)));
+        append(attrs, vec<mew::ItemAttr>{mew::ItemAttr(beg, beg + len(match), COLOR_PAIR(2))});
     }
     return {matches, attrs};
 }
@@ -1593,18 +1665,18 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
     keymap['L'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
         if (not isin(cmd_modes, get_mode(cmdline))) return false;
         if (auto mh = next_menu(mew); mh != nullptr) {
-            const auto& [items, attrs] = mh->menu_data;
+            const auto& [items, attrs] = *get_data(*mh);
             setall(menu, items, attrs);
-            set_text(cmdline, mh->text);
+            set_text(cmdline, *get_text(*mh));
         }
         return true;
     };
     keymap['H'] = [&](Mew& mew, Menu& menu, CommandLine& cmdline) {
         if (not isin(cmd_modes, get_mode(cmdline))) return false;
         if (auto mh = prev_menu(mew); mh != nullptr) {
-            const auto& [items, attrs] = mh->menu_data;
+            const auto& [items, attrs] = *get_data(*mh);
             setall(menu, items, attrs);
-            set_text(cmdline, mh->text);
+            set_text(cmdline, *get_text(*mh));
         }
         return true;
     };
@@ -1661,13 +1733,13 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
 
             if (not std::empty(new_items)) {
                 setall(menu, new_items, attrs);
-                auto menu_hist_elem = MenuHistoryElem{
-                    .menu_data = std::make_tuple(std::move(new_items), std::move(attrs)),
-                        .text = cmd_text,
-                };
+                auto menu_hist_elem = MenuHistoryElem(
+                    std::make_tuple(std::move(new_items), std::move(attrs)),
+                    cmd_text
+                );
                insert_menu(mew, std::move(menu_hist_elem));
             }
-            insert_qry(mew, Item{"  ", mode + cmd_text, "", -1});
+            insert_qry(mew, Item(mode + cmd_text));
             return true;
         }
         else if (auto mode = get_mode(cmdline); (mode == 'f')) {
@@ -1689,14 +1761,14 @@ auto create_keymap(cmap<int, KeyCommand>& user_keymap, cmap<int, int>& remap, bo
             set_mode(cmdline, 's');
             make_populatemenu_cmd(get_text(cmdline))(mew, menu, cmdline);
             set_mode(cmdline, 'X');
-            insert_cmd(mew, Item{"  ", 'X' + get_text(cmdline), "", -1});
+            insert_cmd(mew, Item('X' + get_text(cmdline)));
             return true;
         }
         else if (auto mode = get_mode(cmdline); (mode == 'x')) {
             set_mode(cmdline, 's');
             make_interactive_cmd(get_text(cmdline))(mew, menu, cmdline);
             set_mode(cmdline, 'x');
-            insert_cmd(mew, Item{"  ", 'x' + get_text(cmdline), "", -1});
+            insert_cmd(mew, Item('x' + get_text(cmdline)));
             return true;
         }
         return false;
@@ -1799,7 +1871,7 @@ auto replace_unescaped(cstr& line, cvec<str>& srep, cvec<Item>& arep, cstr& hrep
             if (std::empty(arepp)) {
                 for (const auto& item : arep) {
                     arepp += " '"
-                        + join(split(item.text, '\''),  str("'\\''"))
+                        + join(split(*get_text(item), '\''),  str("'\\''"))
                         + "' ";
                 }
             }
@@ -1859,10 +1931,10 @@ auto make_populatemenu_cmd(str cmd) -> KeyCommand {
 
         if (not std::empty(lines)) {
             setall(menu, lines, {});
-            auto menu_hist_elem = MenuHistoryElem{
-                .menu_data = std::make_tuple(std::move(lines), mew::LineAttrs()),
-                .text = get_text(cmdline),
-            };
+            auto menu_hist_elem = MenuHistoryElem(
+                std::make_tuple(std::move(lines), mew::LineAttrs()),
+                get_text(cmdline)
+            );
             insert_menu(mew, std::move(menu_hist_elem));
         }
         return true;
@@ -1870,76 +1942,6 @@ auto make_populatemenu_cmd(str cmd) -> KeyCommand {
 }
 
 } // namespace mew
-
-/**
-*/
-struct CmdLineArgs {
-    vec<str> filenames;
-    int incremental_thresh;
-    bool incremental_file;
-    bool parallel;
-    str config;
-    bool stdin_files;
-};
-
-auto get_cmdline_args(int argc, char* argv[]) -> CmdLineArgs {
-    auto cmdline_args = CmdLineArgs{
-        .filenames=vec<str>(),
-        .incremental_thresh=500000,
-        .incremental_file=false,
-        .parallel=false,
-        .config="",
-        .stdin_files=false,
-    };
-
-    const auto shortopts = "fpTt:c:";
-    const int STDIN_FILES='f', CONFIG='c', PARALLEL='p', INCREMENTAL_FILE='T', INCREMENTAL_THRESH='t';
-
-    int opt_idx;
-    option longopts[] = {
-        option{.name="incremental-thresh", .has_arg=required_argument, .flag=0, .val=INCREMENTAL_THRESH},
-        option{.name="incremental-file", .has_arg=no_argument, .flag=0, .val=INCREMENTAL_FILE},
-        option{.name="parallel", .has_arg=no_argument, .flag=0, .val=PARALLEL},
-        option{.name="config", .has_arg=required_argument, .flag=0, .val=CONFIG},
-        option{.name="stdin-files", .has_arg=no_argument, .flag=0, .val=STDIN_FILES},
-        option{.name=0, .has_arg=0, .flag=0, .val=0},
-    };
-
-    while (true) {
-        int c = getopt_long(argc, argv, shortopts, longopts, &opt_idx);
-
-        if (c == -1) {
-            break;
-        }
-
-        switch (c) {
-            case INCREMENTAL_FILE:
-                cmdline_args.incremental_file = true;
-                break;
-            case INCREMENTAL_THRESH:
-                cmdline_args.incremental_thresh = std::atoi(optarg);
-                break;
-            case PARALLEL:
-                cmdline_args.parallel = true;
-                break;
-            case CONFIG:
-                cmdline_args.config = optarg;
-                break;
-            case STDIN_FILES:
-                cmdline_args.stdin_files = true;
-                break;
-        }
-    }
-
-    if (optind < argc) {
-        //mapall(optind, argc, cmdline_args.filenames, tostr<const char*>);
-        for (; optind < argc; ++optind) {
-            append(cmdline_args.filenames, str(argv[optind]));
-        }
-    }
-
-    return cmdline_args;
-}
 
 /**
 */
@@ -2013,6 +2015,80 @@ auto read_config(cstr& filename) -> std::tuple<map<int, mew::KeyCommand>, map<in
 
 /**
 */
+struct CmdLineArgs {
+    vec<str> filenames;
+    int incremental_thresh;
+    bool incremental_file;
+    bool parallel;
+    str config;
+    bool stdin_files;
+};
+
+auto get_cmdline_args(int argc, char* argv[]) -> CmdLineArgs {
+    auto cmdline_args = CmdLineArgs{
+        .filenames=vec<str>(),
+        .incremental_thresh=500000,
+        .incremental_file=false,
+        .parallel=false,
+        .config="",
+        .stdin_files=false,
+    };
+
+    const auto shortopts = "fpTt:c:";
+    const int STDIN_FILES='f', CONFIG='c', PARALLEL='p', INCREMENTAL_FILE='T', INCREMENTAL_THRESH='t';
+
+    int opt_idx;
+    option longopts[] = {
+        option{.name="incremental-thresh", .has_arg=required_argument, .flag=0, .val=INCREMENTAL_THRESH},
+        option{.name="incremental-file", .has_arg=no_argument, .flag=0, .val=INCREMENTAL_FILE},
+        option{.name="parallel", .has_arg=no_argument, .flag=0, .val=PARALLEL},
+        option{.name="config", .has_arg=required_argument, .flag=0, .val=CONFIG},
+        option{.name="stdin-files", .has_arg=no_argument, .flag=0, .val=STDIN_FILES},
+        option{.name=0, .has_arg=0, .flag=0, .val=0},
+    };
+
+    while (true) {
+        int c = getopt_long(argc, argv, shortopts, longopts, &opt_idx);
+
+        if (c == -1) {
+            break;
+        }
+
+        switch (c) {
+            case INCREMENTAL_FILE:
+                cmdline_args.incremental_file = true;
+                break;
+            case INCREMENTAL_THRESH:
+                cmdline_args.incremental_thresh = std::atoi(optarg);
+                break;
+            case PARALLEL:
+                cmdline_args.parallel = true;
+                break;
+            case CONFIG:
+                cmdline_args.config = optarg;
+                break;
+            case STDIN_FILES:
+                cmdline_args.stdin_files = true;
+                break;
+        }
+    }
+
+    if (optind < argc) {
+        //mapall(optind, argc, cmdline_args.filenames, tostr<const char*>);
+        for (; optind < argc; ++optind) {
+            append(cmdline_args.filenames, str(argv[optind]));
+        }
+    }
+
+    if (cmdline_args.stdin_files) {
+        concat(cmdline_args.filenames, get_filenames_from_stdin());
+    }
+
+    return cmdline_args;
+}
+
+/**
+*/
 template<typename T>
 auto print(const T& t) -> void {
     std::cout << t << std::endl;
@@ -2021,10 +2097,7 @@ auto print(const T& t) -> void {
 auto main(int argc, char *argv[]) -> int {
     setlocale(LC_ALL, ""); // utf8 support.
 
-    auto args = get_cmdline_args(argc, argv);
-    if (args.stdin_files) {
-        concat(args.filenames, get_filenames_from_stdin());
-    }
+    const auto args = get_cmdline_args(argc, argv);
     auto [keymap, remap] = read_config(args.config);
 
     auto menu_data = mew::MenuData();
